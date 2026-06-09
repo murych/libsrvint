@@ -7,6 +7,46 @@ project(
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+
+add_library(libsrvint)
+
+include(GenerateExportHeader)
+generate_export_header(
+  libsrvint
+  BASE_NAME
+  libsrvint
+  EXPORT_MACRO_NAME
+  SRVINT_API
+  EXPORT_FILE_NAME
+  export/libsrvint/libsrvint_export.h)
+if(NOT BUILD_SHARED_LIBS)
+  target_compile_definitions(libsrvint PUBLIC LIBSRVINT_STATIC_DEFINE)
+endif()
+
+set_target_properties(
+  libsrvint
+  PROPERTIES C_VISIBILITY_PRESET hidden
+             VISIBILITY_INLINES_HIDDEN YES
+             VERSION "${PROJECT_VERSION}"
+             SOVERSION "${PROJECT_VERSION_MAJOR}"
+             EXPORT_NAME libsrvint
+             OUTPUT_NAME libsrvint
+             PUBLIC_HEADER src/srvint.h)
+
+target_include_directories(
+  libsrvint
+  PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src> SYSTEM
+  PUBLIC $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/export/libsrvint>)
+target_compile_features(libsrvint PUBLIC c_std_99)
+
+if(NOT CMAKE_SKIP_INSTALL_RULES)
+  include(GNUInstallDirs)
+  install(
+    TARGETS libsrvint
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+endif()
+
 if(NOT libsrvint_DEVELOPER_MODE)
   return()
 elseif(NOT PROJECT_IS_TOP_LEVEL)
