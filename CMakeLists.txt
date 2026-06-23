@@ -19,6 +19,24 @@ generate_export_header(
   SRVINT_API
   EXPORT_FILE_NAME
   export/libsrvint/libsrvint_export.h)
+
+
+target_sources(
+  libsrvint
+  PRIVATE src/srvint.c src/srvint_private.h
+  PUBLIC FILE_SET
+         HEADERS
+         FILES
+         src/srvint.h
+         FILE_SET
+         generated_headers
+         TYPE
+         HEADERS
+         BASE_DIRS
+         ${CMAKE_CURRENT_BINARY_DIR}/export/libsrvint/
+         FILES
+         ${CMAKE_CURRENT_BINARY_DIR}/export/libsrvint/libsrvint_export.h)
+
 if(NOT BUILD_SHARED_LIBS)
   target_compile_definitions(libsrvint PUBLIC LIBSRVINT_STATIC_DEFINE)
 endif()
