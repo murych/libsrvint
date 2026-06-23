@@ -72,5 +72,6 @@ elseif(NOT PROJECT_IS_TOP_LEVEL)
 endif()
 
 if(BUILD_TESTING)
+  add_subdirectory(example)
   add_library(ref INTERFACE src/_ref/Errors.h src/_ref/SrvIntCMD_extractor.h)
 endif()
