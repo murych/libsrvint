@@ -19,6 +19,11 @@
 
 SRVINT_BEGIN_DECLS
 
+/* Override with -DSRVINT_START_BYTE=0xb7 when building for another variant. */
+#ifndef SRVINT_START_BYTE
+#define SRVINT_START_BYTE 0x55u
+#endif
+
 #ifndef FALSE
 #define FALSE 0
 #endif  // FALSE
@@ -97,6 +102,8 @@ typedef enum {
 SRVINT_API int srvint_set_slave(srvint_t* ctx, int slave);
 SRVINT_API int srvint_get_slave(srvint_t* ctx);
 
+SRVINT_API int srvint_set_response_timeout(srvint_t* ctx, uint32_t to_sec,
+                                           uint32_t to_usec);
 SRVINT_API int srvint_set_reponse_timeout(srvint_t* ctx, uint32_t to_sec,
                                           uint32_t to_usec);
 SRVINT_API int srvint_get_response_timeout(srvint_t* ctx, uint32_t* to_sec,
@@ -115,6 +122,9 @@ SRVINT_API int srvint_set_debug(srvint_t* ctx, int flag);
 SRVINT_API const char* srvint_strerror(int errnum);
 SRVINT_API srvint_t* srvint_serial_new(const char* device, int baud,
                                        char parity, int data_bit, int stop_bit);
+SRVINT_API int srvint_request(srvint_t* ctx, uint8_t function,
+                              const uint8_t* request, uint8_t request_length,
+                              uint8_t* response, uint8_t response_capacity);
 SRVINT_END_DECLS
 
 #endif  // SRVINT_H

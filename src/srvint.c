@@ -1,20 +1,17 @@
 
 #include "srvint.h"
 
-#include <asm-generic/errno-base.h>
-#include <asm-generic/errno.h>
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
-#include <linux/serial.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
-#include <sys/param.h>
+#include <poll.h>
 #include <sys/types.h>
 #include <termios.h>
 #include <time.h>
@@ -22,7 +19,7 @@
 
 #include "srvint_private.h"
 
-#define START_BYTE 0x55
+#define START_BYTE ((uint8_t)SRVINT_START_BYTE)
 
 const unsigned int libsrvint_version_major = 0;
 const unsigned int libsrvint_version_minor = 1;
@@ -134,14 +131,23 @@ int _srvint_send(srvint_t *ctx, const uint8_t *frame, size_t length) {
       printf("%02x ", frame[i]);
     }
 
-    ssize_t n = write(ctx->s, frame, length);
-    if (n < 0) {
-      return -1;
-    }
-
-    tcdrain(ctx->s);
-    return (int)n;
   }
+
+  size_t sent = 0;
+  while (sent < length) {
+    ssize_t n = write(ctx->s, frame + sent, length - sent);
+    if (n > 0) { sent += (size_t)n; continue; }
+    if (n < 0 && errno == EINTR) continue;
+    if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      struct pollfd pfd = {ctx->s, POLLOUT, 0};
+      if (poll(&pfd, 1, -1) < 0 && errno != EINTR) return -1;
+      continue;
+    }
+    if (n == 0) errno = EIO;
+    return -1;
+  }
+  if (tcdrain(ctx->s) < 0) return -1;
+  return (int)sent;
 }
 
 // ------------------------------------
@@ -197,7 +203,7 @@ int srvint_set_response_timeout(srvint_t *ctx, uint32_t to_sec,
 
 int srvint_get_response_timeout(srvint_t *ctx, uint32_t *to_sec,
                                 uint32_t *to_usec) {
-  if (ctx == NULL) {
+  if (ctx == NULL || to_sec == NULL || to_usec == NULL) {
     errno = EINVAL;
     return -EXIT_FAILURE;
   }
@@ -205,6 +211,11 @@ int srvint_get_response_timeout(srvint_t *ctx, uint32_t *to_sec,
   *to_sec = ctx->response_timeout.tv_sec;
   *to_usec = ctx->response_timeout.tv_usec;
   return EXIT_SUCCESS;
+}
+
+int srvint_set_reponse_timeout(srvint_t *ctx, uint32_t to_sec,
+                               uint32_t to_usec) {
+  return srvint_set_response_timeout(ctx, to_sec, to_usec);
 }
 
 static speed_t baud_to_speed(int baud) {
@@ -220,11 +231,9 @@ static speed_t baud_to_speed(int baud) {
     case 115200:
       return B115200;
     default:
-      fprintf(stderr, "got unsupported baudrate %d, defaulting to 115200\n",
-              baud);
-      break;
+      errno = EINVAL;
+      return (speed_t)0;
   }
-  return B115200;
 }
 
 int srvint_connect(srvint_t *ctx) {
@@ -233,6 +242,11 @@ int srvint_connect(srvint_t *ctx) {
     return -EXIT_FAILURE;
   }
 
+  if (ctx->backend_data == NULL) {
+    errno = EINVAL;
+    return -EXIT_FAILURE;
+  }
+  if (ctx->s >= 0) return EXIT_SUCCESS;
   srvint_serial_t *ctx_serial = ctx->backend_data;
 
   if (ctx->debug) {
@@ -262,7 +276,11 @@ int srvint_connect(srvint_t *ctx) {
   }
 
   struct termios tty;
-  memset(&tty, 0, sizeof(tty));
+  if (tcgetattr(ctx->s, &tty) != EXIT_SUCCESS) {
+    close(ctx->s);
+    ctx->s = -1;
+    return -EXIT_FAILURE;
+  }
 
   tty.c_lflag &= ~(ECHO | ECHOE | ECHONL | ISIG | ICANON);
 
@@ -275,19 +293,22 @@ int srvint_connect(srvint_t *ctx) {
   tty.c_iflag &= ~(IXON | IXOFF | IXANY);
   tty.c_oflag &= ~(OPOST | ONLCR);
 
-#if 0
   tty.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL);
-
-  // TODO get params from settings
   tty.c_cflag &= ~(PARENB | CSTOPB);
+#ifdef CRTSCTS
   tty.c_cflag &= ~CRTSCTS;
 #endif
   tty.c_cflag |= CREAD | CLOCAL;
   tty.c_cflag &= ~CSIZE;
   switch (ctx_serial->data_bits) {
-    case 8:
+    case 5: tty.c_cflag |= CS5; break;
+    case 6: tty.c_cflag |= CS6; break;
+    case 7: tty.c_cflag |= CS7; break;
+    case 8: tty.c_cflag |= CS8; break;
     default:
-      tty.c_cflag |= CS8;
+      errno = EINVAL;
+      close(ctx->s); ctx->s = -1;
+      return -EXIT_FAILURE;
   }
 
   if (ctx_serial->stop_bits == 1) {
@@ -305,6 +326,9 @@ int srvint_connect(srvint_t *ctx) {
     tty.c_cflag |= PARENB;
     tty.c_cflag |= PARODD;
   }
+
+  tty.c_cc[VMIN] = 0;
+  tty.c_cc[VTIME] = 0;
 
   if (cfsetispeed(&tty, ctx_serial->baud) < EXIT_SUCCESS ||
       cfsetospeed(&tty, ctx_serial->baud) < EXIT_SUCCESS) {
@@ -376,8 +400,7 @@ srvint_t *srvint_serial_new(const char *device, int baud, char parity,
     return NULL;
   }
 
-  if (baud == 0) {
-    fprintf(stderr, "baud rate value must not be zero\n");
+  if (baud == 0 || baud_to_speed(baud) == 0) {
     errno = EINVAL;
     return NULL;
   }
@@ -397,6 +420,7 @@ srvint_t *srvint_serial_new(const char *device, int baud, char parity,
   }
 
   serial = (srvint_serial_t *)ctx->backend_data;
+  memset(serial, 0, sizeof(*serial));
   serial->device = (char *)malloc((strlen(device) + 1) * sizeof(char));
   if (serial->device == NULL) {
     srvint_free(ctx);
@@ -406,8 +430,14 @@ srvint_t *srvint_serial_new(const char *device, int baud, char parity,
   strcpy(serial->device, device);
 
   serial->baud = baud_to_speed(baud);
-  serial->data_bits = data_bit;
-  serial->stop_bits = stop_bit;
+  serial->data_bits = data_bit != 0 ? (uint8_t)data_bit : 8;
+  serial->stop_bits = stop_bit != 0 ? (uint8_t)stop_bit : 1;
+  if (serial->data_bits < 5 || serial->data_bits > 8 ||
+      (serial->stop_bits != 1 && serial->stop_bits != 2)) {
+    srvint_free(ctx);
+    errno = EINVAL;
+    return NULL;
+  }
   if (parity == 'N' || parity == 'E' || parity == 'O') {
     serial->parity = parity;
   } else {
@@ -424,8 +454,9 @@ uint8_t _srvint_next_packet_id(srvint_t *ctx) {
   if (!ctx) {
     return 0;
   }
-  ctx->last_packet_id = (ctx->last_packet_id + 1) & 0x7f;
-  return 0x80 | ctx->last_packet_id;
+  ctx->last_packet_id = (uint8_t)((ctx->last_packet_id + 1) & 0x7f);
+  if (ctx->last_packet_id == 0) ctx->last_packet_id = 1;
+  return ctx->last_packet_id;
 }
 
 uint8_t _srvint_compute_hdr_hash(uint8_t addr, uint8_t pid, uint8_t cmd,
@@ -444,14 +475,114 @@ uint8_t _srvint_compute_payload_hash(const uint8_t *data, uint8_t length) {
   return hash;
 }
 
-int srvint_flush(srvint_t *ctx) { return tcflush(ctx->s, TCIOFLUSH); }
+int srvint_flush(srvint_t *ctx) {
+  if (ctx == NULL || ctx->s < 0) { errno = EINVAL; return -EXIT_FAILURE; }
+  return tcflush(ctx->s, TCIOFLUSH);
+}
 
 static int _srvint_build_request_header(srvint_t *ctx, int function,
                                         int payload_length, uint8_t *hdr) {
-  assert(ctx->slave != SRVINT_NULL_ADDRESS);
+  if (ctx == NULL || hdr == NULL || ctx->slave == SRVINT_NULL_ADDRESS ||
+      function < 0 || function > 255 || payload_length < 0 || payload_length > 255) {
+    errno = EINVAL;
+    return -EXIT_FAILURE;
+  }
+  uint8_t packet_id = _srvint_next_packet_id(ctx);
   hdr[0] = START_BYTE;
   hdr[1] = ctx->slave;
-  hdr[2] = function;
-  hdr[3] = payload_length;
-  // hdr[5] = _srvint_compute_hdr_hash(addr, , uint8_t cmd, uint8_t length)
+  hdr[2] = packet_id;
+  hdr[3] = function;
+  hdr[4] = payload_length;
+  hdr[5] = _srvint_compute_hdr_hash(hdr[1], hdr[2], hdr[3], hdr[4]);
+  return packet_id;
+}
+
+int srvint_get_header_length(srvint_t *ctx) {
+  if (ctx == NULL) { errno = EINVAL; return -EXIT_FAILURE; }
+  return SRVINT_HEADER_LENGTH;
+}
+
+static int read_some(srvint_t *ctx, uint8_t *dst, size_t length) {
+  int timeout = (int)(ctx->response_timeout.tv_sec * 1000L +
+                      (ctx->response_timeout.tv_usec + 999) / 1000);
+  size_t got = 0;
+  while (got < length) {
+    struct pollfd pfd = {ctx->s, POLLIN, 0};
+    int rc = poll(&pfd, 1, timeout);
+    if (rc < 0 && errno == EINTR) continue;
+    if (rc < 0) return -EXIT_FAILURE;
+    if (rc == 0) { errno = ETIMEDOUT; return -EXIT_FAILURE; }
+    if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) { errno = EIO; return -EXIT_FAILURE; }
+    ssize_t n = read(ctx->s, dst + got, length - got);
+    if (n > 0) { got += (size_t)n; continue; }
+    if (n < 0 && errno == EINTR) continue;
+    if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) continue;
+    if (n == 0) { errno = EIO; return -EXIT_FAILURE; }
+    return -EXIT_FAILURE;
+  }
+  return (int)got;
+}
+
+static int receive_frame(srvint_t *ctx, uint8_t *frame, size_t capacity) {
+  uint8_t byte;
+  do {
+    if (read_some(ctx, &byte, 1) < 0) return -EXIT_FAILURE;
+  } while (byte != START_BYTE);
+  frame[0] = byte;
+  if (read_some(ctx, frame + 1, SRVINT_HEADER_LENGTH - 1) < 0) return -EXIT_FAILURE;
+  if ((size_t)SRVINT_HEADER_LENGTH + frame[4] +
+      (frame[4] != 0 ? 1 : 0) > capacity) {
+    errno = ESIBADDATA;
+    return -EXIT_FAILURE;
+  }
+  if (frame[5] != _srvint_compute_hdr_hash(frame[1], frame[2], frame[3], frame[4])) {
+    errno = ESIBADCRC;
+    return -EXIT_FAILURE;
+  }
+  if (frame[4] != 0) {
+    if (read_some(ctx, frame + SRVINT_HEADER_LENGTH, frame[4] + 1) < 0) return -EXIT_FAILURE;
+    if (frame[SRVINT_HEADER_LENGTH + frame[4]] !=
+        _srvint_compute_payload_hash(frame + SRVINT_HEADER_LENGTH, frame[4])) {
+      errno = ESIBADCRC;
+      return -EXIT_FAILURE;
+    }
+  }
+  return SRVINT_HEADER_LENGTH + frame[4] + (frame[4] != 0 ? 1 : 0);
+}
+
+int _srvint_recieve_msg(srvint_t *ctx, uint8_t *msg, msg_type_t msg_type) {
+  (void)msg_type;
+  if (ctx == NULL || msg == NULL || ctx->s < 0) { errno = EINVAL; return -EXIT_FAILURE; }
+  return receive_frame(ctx, msg, SRVINT_HEADER_LENGTH + SRVINT_MAX_PAYLOAD + 1);
+}
+
+int srvint_request(srvint_t *ctx, uint8_t function, const uint8_t *request,
+                   uint8_t request_length, uint8_t *response,
+                   uint8_t response_capacity) {
+  uint8_t frame[SRVINT_HEADER_LENGTH + SRVINT_MAX_PAYLOAD + 1];
+  uint8_t reply[SRVINT_HEADER_LENGTH + SRVINT_MAX_PAYLOAD + 1];
+  if (ctx == NULL || ctx->s < 0 || ctx->slave == SRVINT_NULL_ADDRESS ||
+      (request_length != 0 && request == NULL) ||
+      (response_capacity != 0 && response == NULL)) {
+    errno = EINVAL;
+    return -EXIT_FAILURE;
+  }
+  int packet_id = _srvint_build_request_header(ctx, function, request_length, frame);
+  if (packet_id < 0) return -EXIT_FAILURE;
+  if (request_length != 0) memcpy(frame + SRVINT_HEADER_LENGTH, request, request_length);
+  if (request_length != 0) {
+    frame[SRVINT_HEADER_LENGTH + request_length] =
+        _srvint_compute_payload_hash(request, request_length);
+  }
+  if (send_msg(ctx, frame, SRVINT_HEADER_LENGTH + request_length +
+               (request_length != 0 ? 1 : 0)) < 0) return -EXIT_FAILURE;
+  if (receive_frame(ctx, reply, sizeof(reply)) < 0) return -EXIT_FAILURE;
+  if (reply[1] != SRVINT_MASTER_ADDRESS || reply[2] != (uint8_t)packet_id ||
+      reply[3] != function) {
+    errno = ESIBADDATA;
+    return -EXIT_FAILURE;
+  }
+  if (reply[4] > response_capacity) { errno = EMSGSIZE; return -EXIT_FAILURE; }
+  if (reply[4] != 0) memcpy(response, reply + SRVINT_HEADER_LENGTH, reply[4]);
+  return reply[4];
 }

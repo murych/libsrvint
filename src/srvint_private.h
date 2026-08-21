@@ -16,6 +16,8 @@
 SRVINT_BEGIN_DECLS
 
 #define _RESPONSE_TIMEOUT 50000
+#define SRVINT_HEADER_LENGTH 6
+#define SRVINT_MAX_PAYLOAD 255
 
 typedef enum {
   MSG_INDICATION,   // request message on server side

@@ -5,6 +5,13 @@ project(
   VERSION 0.1
   LANGUAGES C CXX)
 
+set(SRVINT_START_BYTE "0x55" CACHE STRING
+    "SrvInt frame start byte (the protocol document's 0xB7 is not the default)")
+
+option(LIBSRVINT_BUILD_TESTS
+       "Build libsrvint integration tests"
+       OFF)
+
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
@@ -40,6 +47,7 @@ target_sources(
 if(NOT BUILD_SHARED_LIBS)
   target_compile_definitions(libsrvint PUBLIC LIBSRVINT_STATIC_DEFINE)
 endif()
+target_compile_definitions(libsrvint PUBLIC SRVINT_START_BYTE=${SRVINT_START_BYTE})
 
 set_target_properties(
   libsrvint
@@ -71,7 +79,10 @@ elseif(NOT PROJECT_IS_TOP_LEVEL)
   message(AUTHOR_WARNING "Developer mode is intended for developers")
 endif()
 
-if(BUILD_TESTING)
+if(LIBSRVINT_BUILD_TESTS)
+  include(CTest)
+  enable_testing()
   add_subdirectory(example)
+  add_subdirectory(test)
   add_library(ref INTERFACE src/_ref/Errors.h src/_ref/SrvIntCMD_extractor.h)
 endif()
