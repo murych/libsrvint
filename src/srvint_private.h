@@ -77,8 +77,9 @@ struct _srvint {
 
 struct _srvint_server {
   srvint_t *transport;
-  int stop_requested;
-  int running;
+  uint8_t last_error;
+  uint8_t error_values[256];
+  uint8_t error_valid[256];
 };
 
 void _srvint_init_common(srvint_t* ctx);
