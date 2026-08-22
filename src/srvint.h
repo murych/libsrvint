@@ -136,6 +136,12 @@ SRVINT_API int srvint_zeroize_error(srvint_t* ctx, uint8_t* last_error);
 SRVINT_API int srvint_unknown(srvint_t* ctx, uint8_t command,
                               const uint8_t* operands, uint8_t operand_count,
                               uint8_t* last_error);
+SRVINT_API int srvint_set_param(srvint_t* ctx, const uint8_t* request,
+                                uint8_t request_length, uint8_t* response,
+                                uint8_t response_capacity);
+SRVINT_API int srvint_get_param(srvint_t* ctx, const uint8_t* request,
+                                uint8_t request_length, uint8_t* response,
+                                uint8_t response_capacity);
 SRVINT_END_DECLS
 
 #endif  // SRVINT_H

@@ -37,7 +37,7 @@ static int write_all(int fd, const uint8_t *data, size_t length) {
 }
 
 static int server_loop(int fd) {
-  for (int command_number = 0; command_number < 6; ++command_number) {
+  for (int command_number = 0; command_number < 8; ++command_number) {
     uint8_t request[262] = {0};
     uint8_t response[262] = {0};
 
@@ -62,6 +62,18 @@ static int server_loop(int fd) {
         if (request_length != 2) return 5;
         response_command = SRVINT_FC_UNKNOWN;
         response_length = 1; response[6] = 0x77;
+        break;
+      case SRVINT_FC_SET_PARAM:
+        if (request_length != 3 || request[6] != 0xb0) return 8;
+        response_length = 4;
+        response[6] = request[6]; response[7] = request[7];
+        response[8] = request[8]; response[9] = 0x88;
+        break;
+      case SRVINT_FC_GET_PARAM:
+        if (request_length != 2 || request[6] != 0xb2) return 9;
+        response_length = 3;
+        response[6] = request[6]; response[7] = request[7];
+        response[8] = 0x99;
         break;
       default: return 6;
     }
@@ -109,6 +121,19 @@ int main(void) {
   result |= srvint_zeroize_error(ctx, &value) || value != 0x66;
   result |= srvint_unknown(ctx, 0x99, unknown_operands, sizeof(unknown_operands), &value) ||
             value != 0x77;
+  uint8_t set_request[3] = {0xb0, 0x01, 0x42};
+  uint8_t set_response[4] = {0};
+  int set_length = srvint_set_param(ctx, set_request, sizeof(set_request),
+                                    set_response, sizeof(set_response));
+  result |= set_length != 4 || set_response[0] != 0xb0 ||
+            set_response[3] != 0x88;
+
+  uint8_t get_request[2] = {0xb2, 0x03};
+  uint8_t get_response[3] = {0};
+  int get_length = srvint_get_param(ctx, get_request, sizeof(get_request),
+                                    get_response, sizeof(get_response));
+  result |= get_length != 3 || get_response[0] != 0xb2 ||
+            get_response[2] != 0x99;
 
   srvint_close(ctx); srvint_free(ctx);
   int status;

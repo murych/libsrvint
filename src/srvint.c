@@ -655,3 +655,28 @@ int srvint_unknown(srvint_t *ctx, uint8_t command, const uint8_t *operands,
   *last_error = response[0];
   return EXIT_SUCCESS;
 }
+
+static int srvint_param_request(srvint_t *ctx, uint8_t function,
+                                const uint8_t *request, uint8_t request_length,
+                                uint8_t *response, uint8_t response_capacity) {
+  if (request == NULL || request_length == 0) {
+    errno = EINVAL;
+    return -EXIT_FAILURE;
+  }
+  return srvint_request(ctx, function, request, request_length, response,
+                        response_capacity);
+}
+
+int srvint_set_param(srvint_t *ctx, const uint8_t *request,
+                     uint8_t request_length, uint8_t *response,
+                     uint8_t response_capacity) {
+  return srvint_param_request(ctx, SRVINT_FC_SET_PARAM, request,
+                              request_length, response, response_capacity);
+}
+
+int srvint_get_param(srvint_t *ctx, const uint8_t *request,
+                     uint8_t request_length, uint8_t *response,
+                     uint8_t response_capacity) {
+  return srvint_param_request(ctx, SRVINT_FC_GET_PARAM, request,
+                              request_length, response, response_capacity);
+}
