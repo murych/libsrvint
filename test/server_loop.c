@@ -1,6 +1,6 @@
+#include <errno.h>
 #include <poll.h>
 #include <pty.h>
-#include <errno.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <sys/wait.h>
@@ -8,7 +8,7 @@
 
 #include "srvint.h"
 
-#define HEADER_LENGTH 6
+#define HEADER_LENGTH    6
 #define MAX_FRAME_LENGTH (HEADER_LENGTH + 255 + 1)
 
 static uint8_t xor4(uint8_t a, uint8_t b, uint8_t c, uint8_t d) {
@@ -56,13 +56,14 @@ static int send_frame(int fd, uint8_t address, uint8_t packet_id,
     for (uint8_t i = 0; i < payload_length; ++i) frame[6 + i] = payload[i];
     frame[6 + payload_length] = xor_data(payload, payload_length);
   }
-  return write_all(fd, frame, HEADER_LENGTH + payload_length +
-                              (payload_length != 0 ? 1 : 0));
+  return write_all(
+      fd, frame,
+      HEADER_LENGTH + payload_length + (payload_length != 0 ? 1 : 0));
 }
 
 static int send_bad_data_frame(int fd) {
-  uint8_t frame[8] = {SRVINT_START_BYTE, 0x10, 0x7e, SRVINT_FC_PING,
-                      1, 0, 0xaa, 0};
+  uint8_t frame[8] = {
+      SRVINT_START_BYTE, 0x10, 0x7e, SRVINT_FC_PING, 1, 0, 0xaa, 0};
   frame[5] = xor4(frame[1], frame[2], frame[3], frame[4]);
   frame[7] = (uint8_t)(frame[6] ^ 1);
   return write_all(fd, frame, sizeof(frame));
@@ -147,7 +148,9 @@ static int expect_response(int fd, uint8_t *frame, uint8_t packet_id,
   int length = read_frame(fd, frame, MAX_FRAME_LENGTH);
   return length >= HEADER_LENGTH && frame[1] == SRVINT_MASTER_ADDRESS &&
                  frame[2] == packet_id && frame[3] == command &&
-                 frame[4] == payload_length ? 0 : -1;
+                 frame[4] == payload_length
+             ? 0
+             : -1;
 }
 
 int main(void) {
@@ -183,7 +186,8 @@ int main(void) {
       send_frame(master, 0x10, 4, SRVINT_FC_SW_RESET, NULL, 0, 0) != 0 ||
       expect_response(master, frame, 4, SRVINT_FC_SW_RESET, 1) != 0 ||
       frame[6] != 0x42 ||
-      send_frame(master, 0x10, 5, SRVINT_FC_GET_ERROR, (uint8_t[]){7}, 1, 0) != 0 ||
+      send_frame(master, 0x10, 5, SRVINT_FC_GET_ERROR, (uint8_t[]){7}, 1, 0) !=
+          0 ||
       expect_response(master, frame, 5, SRVINT_FC_GET_ERROR, 3) != 0 ||
       frame[6] != 7 || frame[7] != 0x99 || frame[8] != 0x42 ||
       send_frame(master, 0x10, 6, SRVINT_FC_GET_PARAM, parameter, 3, 0) != 0 ||

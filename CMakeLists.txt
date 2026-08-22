@@ -8,9 +8,8 @@ project(
 set(SRVINT_START_BYTE "0x55" CACHE STRING
     "SrvInt frame start byte (the protocol document's 0xB7 is not the default)")
 
-option(LIBSRVINT_BUILD_TESTS
-       "Build libsrvint integration tests"
-       OFF)
+option(LIBSRVINT_BUILD_TESTS "Build libsrvint integration tests" OFF)
+option(LIBSRVINT_BUILD_EXAMPLES "Build libsrvint usage examples" OFF)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -46,7 +45,8 @@ target_sources(
 if(NOT BUILD_SHARED_LIBS)
   target_compile_definitions(libsrvint PUBLIC LIBSRVINT_STATIC_DEFINE)
 endif()
-target_compile_definitions(libsrvint PUBLIC SRVINT_START_BYTE=${SRVINT_START_BYTE})
+target_compile_definitions(libsrvint
+                           PUBLIC SRVINT_START_BYTE=${SRVINT_START_BYTE})
 
 set_target_properties(
   libsrvint
@@ -61,7 +61,7 @@ set_target_properties(
 target_include_directories(
   libsrvint
   PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
-  SYSTEM PUBLIC $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/export/libsrvint>)
+  SYSTEM $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/export/libsrvint>)
 target_compile_features(libsrvint PUBLIC c_std_99)
 
 if(NOT CMAKE_SKIP_INSTALL_RULES)
@@ -81,7 +81,9 @@ endif()
 if(LIBSRVINT_BUILD_TESTS)
   include(CTest)
   enable_testing()
-  add_subdirectory(example)
   add_subdirectory(test)
-  add_library(ref INTERFACE src/_ref/Errors.h src/_ref/SrvIntCMD_extractor.h)
+endif()
+
+if(LIBSRVINT_BUILD_EXAMPLES)
+  add_subdirectory(example)
 endif()

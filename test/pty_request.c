@@ -62,7 +62,8 @@ int main(void) {
     response[7] = 0xcd;
     response[8] = xor_data(response + 6, 2);
 
-    if (write(master, response, sizeof(response)) != (ssize_t)sizeof(response)) {
+    if (write(master, response, sizeof(response)) !=
+        (ssize_t)sizeof(response)) {
       _exit(4);
     }
     _exit(0);

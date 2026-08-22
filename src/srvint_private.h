@@ -15,9 +15,9 @@
 
 SRVINT_BEGIN_DECLS
 
-#define _RESPONSE_TIMEOUT 50000
+#define _RESPONSE_TIMEOUT    50000
 #define SRVINT_HEADER_LENGTH 6
-#define SRVINT_MAX_PAYLOAD 255
+#define SRVINT_MAX_PAYLOAD   255
 
 typedef struct _srvint_frame {
   uint8_t address;
@@ -76,7 +76,7 @@ struct _srvint {
 };
 
 struct _srvint_server {
-  srvint_t *transport;
+  srvint_t* transport;
   uint8_t last_error;
   uint8_t error_values[256];
   uint8_t error_valid[256];
