@@ -13,3 +13,9 @@ target_link_libraries(libsrvint_pty_request_test PRIVATE libsrvint ${UTIL_LIBRAR
 target_compile_features(libsrvint_pty_request_test PRIVATE c_std_99)
 
 add_test(NAME libsrvint_pty_request COMMAND libsrvint_pty_request_test)
+
+add_executable(libsrvint_basic_commands_test basic_commands.c)
+target_link_libraries(libsrvint_basic_commands_test PRIVATE libsrvint ${UTIL_LIBRARY})
+target_compile_features(libsrvint_basic_commands_test PRIVATE c_std_99)
+
+add_test(NAME libsrvint_basic_commands COMMAND libsrvint_basic_commands_test)

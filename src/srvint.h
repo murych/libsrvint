@@ -43,9 +43,10 @@ SRVINT_BEGIN_DECLS
 /* srvint function codes */
 
 #define SRVINT_FC_GO_TO_BOOT_MODE 0x77
+#define SRVINT_FC_UNKNOWN         0x00
 #define SRVINT_FC_PING            0x81
-#define SRVINT_FC_SW_RESET        0x82
-#define SRVINT_FC_HW_RESET        0x83
+#define SRVINT_FC_HW_RESET        0x82
+#define SRVINT_FC_SW_RESET        0x83
 #define SRVINT_FC_GET_ERROR       0x84
 #define SRVINT_FC_ZEROIZE_ERROR   0x85
 #define SRVINT_FC_SET_PARAM       0x86
@@ -125,6 +126,16 @@ SRVINT_API srvint_t* srvint_serial_new(const char* device, int baud,
 SRVINT_API int srvint_request(srvint_t* ctx, uint8_t function,
                               const uint8_t* request, uint8_t request_length,
                               uint8_t* response, uint8_t response_capacity);
+
+SRVINT_API int srvint_ping(srvint_t* ctx, uint8_t* last_error);
+SRVINT_API int srvint_hw_reset(srvint_t* ctx, uint8_t* last_error);
+SRVINT_API int srvint_sw_reset(srvint_t* ctx, uint8_t* last_error);
+SRVINT_API int srvint_get_error(srvint_t* ctx, uint8_t error_position,
+                                uint8_t* error_value, uint8_t* last_error);
+SRVINT_API int srvint_zeroize_error(srvint_t* ctx, uint8_t* last_error);
+SRVINT_API int srvint_unknown(srvint_t* ctx, uint8_t command,
+                              const uint8_t* operands, uint8_t operand_count,
+                              uint8_t* last_error);
 SRVINT_END_DECLS
 
 #endif  // SRVINT_H

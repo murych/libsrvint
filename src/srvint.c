@@ -556,9 +556,11 @@ int _srvint_recieve_msg(srvint_t *ctx, uint8_t *msg, msg_type_t msg_type) {
   return receive_frame(ctx, msg, SRVINT_HEADER_LENGTH + SRVINT_MAX_PAYLOAD + 1);
 }
 
-int srvint_request(srvint_t *ctx, uint8_t function, const uint8_t *request,
-                   uint8_t request_length, uint8_t *response,
-                   uint8_t response_capacity) {
+static int srvint_request_internal(srvint_t *ctx, uint8_t function,
+                                    uint8_t response_function,
+                                    const uint8_t *request,
+                                    uint8_t request_length, uint8_t *response,
+                                    uint8_t response_capacity) {
   uint8_t frame[SRVINT_HEADER_LENGTH + SRVINT_MAX_PAYLOAD + 1];
   uint8_t reply[SRVINT_HEADER_LENGTH + SRVINT_MAX_PAYLOAD + 1];
   if (ctx == NULL || ctx->s < 0 || ctx->slave == SRVINT_NULL_ADDRESS ||
@@ -578,11 +580,78 @@ int srvint_request(srvint_t *ctx, uint8_t function, const uint8_t *request,
                (request_length != 0 ? 1 : 0)) < 0) return -EXIT_FAILURE;
   if (receive_frame(ctx, reply, sizeof(reply)) < 0) return -EXIT_FAILURE;
   if (reply[1] != SRVINT_MASTER_ADDRESS || reply[2] != (uint8_t)packet_id ||
-      reply[3] != function) {
+      reply[3] != response_function) {
     errno = ESIBADDATA;
     return -EXIT_FAILURE;
   }
   if (reply[4] > response_capacity) { errno = EMSGSIZE; return -EXIT_FAILURE; }
   if (reply[4] != 0) memcpy(response, reply + SRVINT_HEADER_LENGTH, reply[4]);
   return reply[4];
+}
+
+int srvint_request(srvint_t *ctx, uint8_t function, const uint8_t *request,
+                   uint8_t request_length, uint8_t *response,
+                   uint8_t response_capacity) {
+  return srvint_request_internal(ctx, function, function, request,
+                                 request_length, response, response_capacity);
+}
+
+static int srvint_simple_status(srvint_t *ctx, uint8_t function,
+                                uint8_t *last_error) {
+  if (last_error == NULL) { errno = EINVAL; return -EXIT_FAILURE; }
+  return srvint_request(ctx, function, NULL, 0, last_error, 1) == 1
+             ? EXIT_SUCCESS
+             : -EXIT_FAILURE;
+}
+
+int srvint_ping(srvint_t *ctx, uint8_t *last_error) {
+  return srvint_simple_status(ctx, SRVINT_FC_PING, last_error);
+}
+
+int srvint_hw_reset(srvint_t *ctx, uint8_t *last_error) {
+  return srvint_simple_status(ctx, SRVINT_FC_HW_RESET, last_error);
+}
+
+int srvint_sw_reset(srvint_t *ctx, uint8_t *last_error) {
+  return srvint_simple_status(ctx, SRVINT_FC_SW_RESET, last_error);
+}
+
+int srvint_get_error(srvint_t *ctx, uint8_t error_position,
+                     uint8_t *error_value, uint8_t *last_error) {
+  uint8_t response[3];
+  if (error_value == NULL || last_error == NULL) {
+    errno = EINVAL;
+    return -EXIT_FAILURE;
+  }
+  if (srvint_request(ctx, SRVINT_FC_GET_ERROR, &error_position, 1, response,
+                     sizeof(response)) != (int)sizeof(response)) {
+    return -EXIT_FAILURE;
+  }
+  *error_value = response[1];
+  *last_error = response[2];
+  if (response[0] != error_position) {
+    errno = ESIBADDATA;
+    return -EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
+int srvint_zeroize_error(srvint_t *ctx, uint8_t *last_error) {
+  return srvint_simple_status(ctx, SRVINT_FC_ZEROIZE_ERROR, last_error);
+}
+
+int srvint_unknown(srvint_t *ctx, uint8_t command, const uint8_t *operands,
+                   uint8_t operand_count, uint8_t *last_error) {
+  uint8_t response[1];
+  if (command == SRVINT_FC_UNKNOWN || last_error == NULL ||
+      (operand_count != 0 && operands == NULL)) {
+    errno = EINVAL;
+    return -EXIT_FAILURE;
+  }
+  if (srvint_request_internal(ctx, command, SRVINT_FC_UNKNOWN, operands,
+                              operand_count, response, sizeof(response)) != 1) {
+    return -EXIT_FAILURE;
+  }
+  *last_error = response[0];
+  return EXIT_SUCCESS;
 }
