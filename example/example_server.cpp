@@ -1,9 +1,9 @@
+#include <srvint.h>
+
+#include <cerrno>
 #include <cstdint>
 #include <cstdlib>
-#include <cerrno>
 #include <iostream>
-
-#include <srvint.h>
 
 struct ApplicationState {
   std::uint8_t last_command = 0;
@@ -11,7 +11,8 @@ struct ApplicationState {
 
 int main(int argc, char **argv) {
   const char *device = argc > 1 ? argv[1] : "/dev/ttyUSB0";
-  const int slave_address = argc > 2 ? std::atoi(argv[2]) : SRVINT_DEVICE_ADDRESS;
+  const int slave_address =
+      argc > 2 ? std::atoi(argv[2]) : SRVINT_DEVICE_ADDRESS;
 
   srvint_t *ctx = ::srvint_serial_new(device, 115200, 'N', 8, 1);
   if (ctx == nullptr) {
@@ -31,9 +32,9 @@ int main(int argc, char **argv) {
 
   // A non-capturing C++ lambda converts to the C parameter callback pointer.
   const srvint_param_callback_t handler =
-      [](srvint_server_t *, const std::uint8_t *request, std::size_t request_length,
-         std::uint8_t *response, std::size_t response_capacity,
-         std::size_t *response_length,
+      [](srvint_server_t *, const std::uint8_t *request,
+         std::size_t request_length, std::uint8_t *response,
+         std::size_t response_capacity, std::size_t *response_length,
          void *user_data) -> int {
     auto *application = static_cast<ApplicationState *>(user_data);
     if (request_length < 6 || request[4] < 2 || response_capacity < 1) {
@@ -60,21 +61,22 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
-  std::cout << "SrvInt server listening on " << device
-            << ", slave address " << slave_address << '\n';
+  std::cout << "SrvInt server listening on " << device << ", slave address "
+            << slave_address << '\n';
   constexpr std::size_t max_frame_length = 6 + 255 + 1;
   std::uint8_t request[max_frame_length];
   int result = EXIT_SUCCESS;
   for (;;) {
-    const int request_length = ::srvint_server_receive(
-        server, request, sizeof(request));
+    const int request_length =
+        ::srvint_server_receive(server, request, sizeof(request));
     if (request_length < 0) {
       if (errno == ETIMEDOUT) continue;
       result = EXIT_FAILURE;
       break;
     }
-    if (::srvint_server_reply(server, request, static_cast<std::size_t>(request_length),
-                              handler, &state) != 0) {
+    if (::srvint_server_reply(server, request,
+                              static_cast<std::size_t>(request_length), handler,
+                              &state) != 0) {
       result = EXIT_FAILURE;
       break;
     }
