@@ -1,5 +1,6 @@
 #include <srvint.h>
 
+#include <array>
 #include <cerrno>
 #include <cstdint>
 #include <cstdlib>
@@ -21,21 +22,13 @@ int main(int argc, char **argv) {
   }
   ::srvint_set_debug(ctx, TRUE);
 
-  srvint_server_t *server = ::srvint_server_new(ctx);
-  if (server == nullptr) {
-    ::srvint_free(ctx);
-    std::cerr << "unable to create SrvInt server context\n";
-    return EXIT_FAILURE;
-  }
-
   ApplicationState state;
 
   // A non-capturing C++ lambda converts to the C parameter callback pointer.
   const srvint_param_callback_t handler =
-      [](srvint_server_t *, const std::uint8_t *request,
-         std::size_t request_length, std::uint8_t *response,
-         std::size_t response_capacity, std::size_t *response_length,
-         void *user_data) -> int {
+      [](srvint_t *, const std::uint8_t *request, std::size_t request_length,
+         std::uint8_t *response, std::size_t response_capacity,
+         std::size_t *response_length, void *user_data) -> int {
     auto *application = static_cast<ApplicationState *>(user_data);
     if (request_length < 6 || request[4] < 2 || response_capacity < 1) {
       return -1;
@@ -54,35 +47,37 @@ int main(int argc, char **argv) {
     return -1;
   };
 
-  if (::srvint_server_set_slave(server, slave_address) != 0 ||
-      ::srvint_server_connect(server) != 0) {
+  if (::srvint_set_slave(ctx, slave_address) != EXIT_SUCCESS ||
+      ::srvint_connect(ctx) != EXIT_SUCCESS) {
     std::cerr << "unable to connect SrvInt server to " << device << '\n';
-    ::srvint_server_free(server);
+    ::srvint_free(ctx);
     return EXIT_FAILURE;
   }
 
   std::cout << "SrvInt server listening on " << device << ", slave address "
             << slave_address << '\n';
   constexpr std::size_t max_frame_length = 6 + 255 + 1;
-  std::uint8_t request[max_frame_length];
+  std::array<std::uint8_t, max_frame_length> request{};
   int result = EXIT_SUCCESS;
   for (;;) {
     const int request_length =
-        ::srvint_server_receive(server, request, sizeof(request));
+        ::srvint_receive(ctx, request.data(), sizeof(request));
     if (request_length < 0) {
-      if (errno == ETIMEDOUT) continue;
+      if (errno == ETIMEDOUT) {
+        continue;
+      }
       result = EXIT_FAILURE;
       break;
     }
-    if (::srvint_server_reply(server, request,
-                              static_cast<std::size_t>(request_length), handler,
-                              &state) != 0) {
+    if (::srvint_reply(ctx, request.data(),
+                       static_cast<std::size_t>(request_length), handler,
+                       &state) != EXIT_SUCCESS) {
       result = EXIT_FAILURE;
       break;
     }
   }
 
-  ::srvint_server_close(server);
-  ::srvint_server_free(server);
+  ::srvint_close(ctx);
+  ::srvint_free(ctx);
   return result == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

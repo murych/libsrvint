@@ -79,11 +79,11 @@ static int read_frame(int fd, uint8_t *frame, size_t capacity) {
   return (int)length;
 }
 
-static int parameter_callback(srvint_server_t *server, const uint8_t *request,
+static int parameter_callback(srvint_t *ctx, const uint8_t *request,
                               size_t request_length, uint8_t *response,
                               size_t response_capacity, size_t *response_length,
                               void *user_data) {
-  (void)server;
+  (void)ctx;
   uint8_t *callback_count = (uint8_t *)user_data;
   if (request_length < HEADER_LENGTH || request[4] < 2 ||
       request_length < HEADER_LENGTH + request[4] + 1 ||
@@ -99,47 +99,41 @@ static int parameter_callback(srvint_server_t *server, const uint8_t *request,
 
 static int run_server(const char *device, int ready_fd) {
   srvint_t *transport = srvint_serial_new(device, 115200, 'N', 8, 1);
-  srvint_server_t *server;
   uint8_t request[MAX_FRAME_LENGTH];
   uint8_t callback_count = 0;
   int served = 0;
 
   if (transport == NULL) return 10;
-  server = srvint_server_new(transport);
-  if (server == NULL) {
+  if (srvint_set_slave(transport, 0x10) != 0 ||
+      srvint_set_last_error(transport, 0x42) != 0 ||
+      srvint_set_error(transport, 7, 0x99) != 0 ||
+      srvint_connect(transport) != 0) {
     srvint_free(transport);
-    return 11;
-  }
-  if (srvint_server_set_slave(server, 0x10) != 0 ||
-      srvint_server_set_last_error(server, 0x42) != 0 ||
-      srvint_server_set_error(server, 7, 0x99) != 0 ||
-      srvint_server_connect(server) != 0) {
-    srvint_server_free(server);
     return 12;
   }
   if (write(ready_fd, "R", 1) != 1) return 13;
   close(ready_fd);
 
   while (served < 9) {
-    int length = srvint_server_receive(server, request, sizeof(request));
+    int length = srvint_receive(transport, request, sizeof(request));
     if (length < 0) {
       if (errno == ESIBADCRC || errno == ESIBADDATA || errno == ETIMEDOUT) {
         continue;
       }
-      srvint_server_free(server);
+      srvint_free(transport);
       return 14;
     }
-    int reply_result = srvint_server_reply(server, request, (size_t)length,
+    int reply_result = srvint_reply(transport, request, (size_t)length,
                                            parameter_callback, &callback_count);
     if (reply_result != 0) {
-      srvint_server_free(server);
+      srvint_free(transport);
       return 15;
     }
     ++served;
   }
 
-  srvint_server_close(server);
-  srvint_server_free(server);
+  srvint_close(transport);
+  srvint_free(transport);
   return callback_count == 3 ? 0 : 16;
 }
 

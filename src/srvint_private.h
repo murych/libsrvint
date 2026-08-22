@@ -73,10 +73,6 @@ struct _srvint {
 #endif
   srvint_serial_t* backend_data;
   uint8_t last_packet_id;
-};
-
-struct _srvint_server {
-  srvint_t* transport;
   uint8_t last_error;
   uint8_t error_values[256];
   uint8_t error_valid[256];
