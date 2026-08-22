@@ -19,6 +19,14 @@ SRVINT_BEGIN_DECLS
 #define SRVINT_HEADER_LENGTH 6
 #define SRVINT_MAX_PAYLOAD 255
 
+typedef struct _srvint_frame {
+  uint8_t address;
+  uint8_t packet_id;
+  uint8_t command;
+  uint8_t payload_length;
+  uint8_t payload[SRVINT_MAX_PAYLOAD];
+} srvint_frame_t;
+
 typedef enum {
   MSG_INDICATION,   // request message on server side
   MSG_CONFIRMATIOM  // request message on client side
@@ -65,6 +73,12 @@ struct _srvint {
 #endif
   srvint_serial_t* backend_data;
   uint8_t last_packet_id;
+};
+
+struct _srvint_server {
+  srvint_t *transport;
+  int stop_requested;
+  int running;
 };
 
 void _srvint_init_common(srvint_t* ctx);

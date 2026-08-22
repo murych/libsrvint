@@ -27,7 +27,6 @@ generate_export_header(
   EXPORT_FILE_NAME
   export/libsrvint/libsrvint_export.h)
 
-
 target_sources(
   libsrvint
   PRIVATE src/srvint.c src/srvint_private.h
@@ -55,14 +54,14 @@ set_target_properties(
              VISIBILITY_INLINES_HIDDEN YES
              VERSION "${PROJECT_VERSION}"
              SOVERSION "${PROJECT_VERSION_MAJOR}"
-             EXPORT_NAME libsrvint
-             OUTPUT_NAME libsrvint
+             EXPORT_NAME srvint
+             OUTPUT_NAME srvint
              PUBLIC_HEADER src/srvint.h)
 
 target_include_directories(
   libsrvint
-  PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src> SYSTEM
-  PUBLIC $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/export/libsrvint>)
+  PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
+  SYSTEM PUBLIC $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/export/libsrvint>)
 target_compile_features(libsrvint PUBLIC c_std_99)
 
 if(NOT CMAKE_SKIP_INSTALL_RULES)

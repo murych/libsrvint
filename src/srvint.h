@@ -93,6 +93,19 @@ extern const unsigned int libsrvint_version_minor;
 extern const unsigned int libsrvint_version_patch;
 
 typedef struct _srvint srvint_t;
+typedef struct _srvint_server srvint_server_t;
+
+typedef enum {
+  SRVINT_SERVER_REPLY = 0,
+  SRVINT_SERVER_NO_REPLY = 1,
+  SRVINT_SERVER_STOP = 2
+} srvint_server_result_t;
+
+typedef int (*srvint_server_handler_t)(
+    srvint_server_t *server, uint8_t address, uint8_t packet_id,
+    uint8_t command, const uint8_t *request, uint8_t request_length,
+    uint8_t *response_command, uint8_t *response, uint8_t response_capacity,
+    uint8_t *response_length, void *user_data);
 
 typedef enum {
   SRVINT_ERROR_RECOVERY_NONE = 0,
@@ -142,6 +155,17 @@ SRVINT_API int srvint_set_param(srvint_t* ctx, const uint8_t* request,
 SRVINT_API int srvint_get_param(srvint_t* ctx, const uint8_t* request,
                                 uint8_t request_length, uint8_t* response,
                                 uint8_t response_capacity);
+
+SRVINT_API srvint_server_t *srvint_serial_server_new(
+    const char *device, int baud, char parity, int data_bits, int stop_bits);
+SRVINT_API int srvint_server_set_slave(srvint_server_t *server, int slave);
+SRVINT_API int srvint_server_connect(srvint_server_t *server);
+SRVINT_API int srvint_server_run(srvint_server_t *server,
+                                 srvint_server_handler_t handler,
+                                 void *user_data);
+SRVINT_API int srvint_server_stop(srvint_server_t *server);
+SRVINT_API int srvint_server_close(srvint_server_t *server);
+SRVINT_API void srvint_server_free(srvint_server_t *server);
 SRVINT_END_DECLS
 
 #endif  // SRVINT_H

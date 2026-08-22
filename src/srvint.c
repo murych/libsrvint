@@ -550,6 +550,29 @@ static int receive_frame(srvint_t *ctx, uint8_t *frame, size_t capacity) {
   return SRVINT_HEADER_LENGTH + frame[4] + (frame[4] != 0 ? 1 : 0);
 }
 
+static int decode_frame(const uint8_t *raw, size_t raw_length,
+                        srvint_frame_t *frame) {
+  size_t expected_length;
+  if (raw == NULL || frame == NULL || raw_length < SRVINT_HEADER_LENGTH) {
+    errno = EINVAL;
+    return -EXIT_FAILURE;
+  }
+  expected_length = SRVINT_HEADER_LENGTH + raw[4] + (raw[4] != 0 ? 1 : 0);
+  if (raw_length != expected_length) {
+    errno = ESIBADDATA;
+    return -EXIT_FAILURE;
+  }
+  frame->address = raw[1];
+  frame->packet_id = raw[2];
+  frame->command = raw[3];
+  frame->payload_length = raw[4];
+  if (frame->payload_length != 0) {
+    memcpy(frame->payload, raw + SRVINT_HEADER_LENGTH,
+           frame->payload_length);
+  }
+  return EXIT_SUCCESS;
+}
+
 int _srvint_recieve_msg(srvint_t *ctx, uint8_t *msg, msg_type_t msg_type) {
   (void)msg_type;
   if (ctx == NULL || msg == NULL || ctx->s < 0) { errno = EINVAL; return -EXIT_FAILURE; }
@@ -679,4 +702,165 @@ int srvint_get_param(srvint_t *ctx, const uint8_t *request,
                      uint8_t response_capacity) {
   return srvint_param_request(ctx, SRVINT_FC_GET_PARAM, request,
                               request_length, response, response_capacity);
+}
+
+srvint_server_t *srvint_serial_server_new(const char *device, int baud,
+                                          char parity, int data_bits,
+                                          int stop_bits) {
+  srvint_server_t *server;
+
+  if (device == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
+
+  server = (srvint_server_t *)calloc(1, sizeof(*server));
+  if (server == NULL) return NULL;
+
+  server->transport = srvint_serial_new(device, baud, parity, data_bits,
+                                         stop_bits);
+  if (server->transport == NULL) {
+    free(server);
+    return NULL;
+  }
+  return server;
+}
+
+int srvint_server_set_slave(srvint_server_t *server, int slave) {
+  if (server == NULL || server->transport == NULL) {
+    errno = EINVAL;
+    return -EXIT_FAILURE;
+  }
+  return srvint_set_slave(server->transport, slave);
+}
+
+int srvint_server_connect(srvint_server_t *server) {
+  if (server == NULL || server->transport == NULL) {
+    errno = EINVAL;
+    return -EXIT_FAILURE;
+  }
+  return srvint_connect(server->transport);
+}
+
+int srvint_server_stop(srvint_server_t *server) {
+  if (server == NULL) {
+    errno = EINVAL;
+    return -EXIT_FAILURE;
+  }
+  server->stop_requested = TRUE;
+  return EXIT_SUCCESS;
+}
+
+int srvint_server_close(srvint_server_t *server) {
+  if (server == NULL || server->transport == NULL) {
+    errno = EINVAL;
+    return -EXIT_FAILURE;
+  }
+  return srvint_close(server->transport);
+}
+
+void srvint_server_free(srvint_server_t *server) {
+  if (server == NULL) return;
+  srvint_free(server->transport);
+  free(server);
+}
+
+static int srvint_server_send_response(srvint_server_t *server,
+                                       uint8_t packet_id,
+                                       uint8_t command,
+                                       const uint8_t *payload,
+                                       uint8_t payload_length) {
+  uint8_t frame[SRVINT_HEADER_LENGTH + SRVINT_MAX_PAYLOAD + 1];
+
+  frame[0] = START_BYTE;
+  frame[1] = SRVINT_MASTER_ADDRESS;
+  frame[2] = packet_id;
+  frame[3] = command;
+  frame[4] = payload_length;
+  frame[5] = _srvint_compute_hdr_hash(frame[1], frame[2], frame[3], frame[4]);
+  if (payload_length != 0) {
+    memcpy(frame + SRVINT_HEADER_LENGTH, payload, payload_length);
+    frame[SRVINT_HEADER_LENGTH + payload_length] =
+        _srvint_compute_payload_hash(payload, payload_length);
+  }
+  return send_msg(server->transport, frame,
+                  SRVINT_HEADER_LENGTH + payload_length +
+                      (payload_length != 0 ? 1 : 0));
+}
+
+int srvint_server_run(srvint_server_t *server,
+                      srvint_server_handler_t handler, void *user_data) {
+  uint8_t frame[SRVINT_HEADER_LENGTH + SRVINT_MAX_PAYLOAD + 1];
+  uint8_t response[SRVINT_MAX_PAYLOAD];
+  srvint_frame_t request;
+
+  if (server == NULL || server->transport == NULL || handler == NULL ||
+      server->transport->s < 0 ||
+      server->transport->slave == SRVINT_NULL_ADDRESS ||
+      server->transport->slave == SRVINT_BROADCAST_ADDRESS) {
+    errno = EINVAL;
+    return -EXIT_FAILURE;
+  }
+  if (server->running) {
+    errno = EBUSY;
+    return -EXIT_FAILURE;
+  }
+
+  server->stop_requested = FALSE;
+  server->running = TRUE;
+  while (!server->stop_requested) {
+    int frame_length = receive_frame(server->transport, frame, sizeof(frame));
+    if (frame_length < 0) {
+      if (errno == ETIMEDOUT || errno == ESIBADCRC || errno == ESIBADDATA) {
+        continue;
+      }
+      server->running = FALSE;
+      return -EXIT_FAILURE;
+    }
+
+    if (decode_frame(frame, (size_t)frame_length, &request) < 0) {
+      continue;
+    }
+
+    if (request.address != (uint8_t)server->transport->slave &&
+        request.address != SRVINT_BROADCAST_ADDRESS) {
+      continue;
+    }
+    if ((request.packet_id & 0x80) != 0) {
+      continue;
+    }
+
+    uint8_t response_command = request.command;
+    uint8_t response_length = 0;
+    int callback_result = handler(
+        server, request.address, request.packet_id, request.command,
+        request.payload, request.payload_length, &response_command, response,
+        sizeof(response),
+        &response_length, user_data);
+    if (callback_result < 0) {
+      server->running = FALSE;
+      return callback_result;
+    }
+    if (callback_result != SRVINT_SERVER_REPLY &&
+        callback_result != SRVINT_SERVER_NO_REPLY &&
+        callback_result != SRVINT_SERVER_STOP) {
+      server->running = FALSE;
+      errno = EINVAL;
+      return -EXIT_FAILURE;
+    }
+    if (request.address != SRVINT_BROADCAST_ADDRESS &&
+        callback_result != SRVINT_SERVER_NO_REPLY) {
+      if (srvint_server_send_response(server, request.packet_id, response_command,
+                                      response, response_length) < 0) {
+        server->running = FALSE;
+        return -EXIT_FAILURE;
+      }
+    }
+    if (callback_result == SRVINT_SERVER_STOP) {
+      server->stop_requested = TRUE;
+    }
+  }
+
+  server->running = FALSE;
+  return EXIT_SUCCESS;
 }
