@@ -1,4 +1,3 @@
-
 #include "srvint.h"
 
 #include <assert.h>
@@ -28,11 +27,26 @@ const unsigned int libsrvint_version_patch = LIBSRVINT_VERSION_PATCH;
 const char *srvint_strerror(int errnum) {
   switch (errnum) {
     case ESIXUNCM:
-      return "Recieved unknown cmd code";
+      return "Received unknown command";
     case ESIXMAXLAT:
       return "Exceeded maximum time latency between packet control bytes";
     case ESIXRECHASH:
-      return "Recieved hash not equal calculating hash";
+      return "Received header hash is not equal to calculated hash";
+    case ESIXOPSCAP:
+      return "Cannot receive operands: buffer capacity exceeded";
+    case ESIXMAXOPLAT:
+      return "Exceeded maximum time latency between packet operand bytes";
+    case ESIXRECDHASH:
+      return "Received data hash is not equal to calculated hash";
+    case ESIXPIDMSB:
+      return "Received packet has an invalid packet ID MSB";
+    case ESIXSAMEPID:
+      return "The same command with the same packet ID cannot be sent "
+             "successively";
+    case ESIXUARTOVF:
+      return "UART input buffer overflow";
+    case ESIXUNKOPS:
+      return "Unknown operands value";
     default:
       break;
   }
