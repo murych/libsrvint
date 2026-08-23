@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 
 project(
   libsrvint
-  VERSION 0.1
+  VERSION 0.1.0
   LANGUAGES C CXX)
 
 set(SRVINT_START_BYTE "0x55" CACHE STRING
@@ -46,7 +46,11 @@ if(NOT BUILD_SHARED_LIBS)
   target_compile_definitions(libsrvint PUBLIC LIBSRVINT_STATIC_DEFINE)
 endif()
 target_compile_definitions(libsrvint
-                           PUBLIC SRVINT_START_BYTE=${SRVINT_START_BYTE})
+                           PUBLIC SRVINT_START_BYTE=${SRVINT_START_BYTE}
+                           PRIVATE
+                           LIBSRVINT_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+                           LIBSRVINT_VERSION_MINOR=${PROJECT_VERSION_MINOR}
+                           LIBSRVINT_VERSION_PATCH=${PROJECT_VERSION_PATCH})
 
 set_target_properties(
   libsrvint
