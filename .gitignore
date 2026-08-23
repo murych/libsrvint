@@ -170,3 +170,5 @@ compile_commands.json
 *.vsix
 
 build/
+*.bak
+.clangd
