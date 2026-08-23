@@ -1,0 +1,8 @@
+
+add_executable(example_server example_server.cpp)
+target_link_libraries(example_server PRIVATE libsrvint)
+target_compile_features(example_server PRIVATE cxx_std_23)
+
+add_executable(example_client example_client.cpp)
+target_link_libraries(example_client PRIVATE libsrvint)
+target_compile_features(example_client PRIVATE cxx_std_23)
