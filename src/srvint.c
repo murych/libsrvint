@@ -21,9 +21,9 @@
 
 #define START_BYTE ((uint8_t)SRVINT_START_BYTE)
 
-const unsigned int libsrvint_version_major = 0;
-const unsigned int libsrvint_version_minor = 1;
-const unsigned int libsrvint_version_patch = 0;
+const unsigned int libsrvint_version_major = LIBSRVINT_VERSION_MAJOR;
+const unsigned int libsrvint_version_minor = LIBSRVINT_VERSION_MINOR;
+const unsigned int libsrvint_version_patch = LIBSRVINT_VERSION_PATCH;
 
 const char *srvint_strerror(int errnum) {
   switch (errnum) {
